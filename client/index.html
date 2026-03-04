@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Tiny Empire</title>
-    <link rel="stylesheet" href="assets/styles.css?v=7" />
+    <link rel="stylesheet" href="assets/styles.css?v=12" />
   </head>
   <body>
     <!-- Auth overlay -->
@@ -33,7 +33,19 @@
         <span id="hud-tick">Tick: 0</span>
       </div>
       <div id="hud-save-status">--</div>
-      <div id="hud-connection" class="status-offline">offline</div>
+      <div id="hud-controls">
+        <div id="hud-connection" class="status-offline">offline</div>
+        <button id="settings-btn" type="button" aria-label="Open settings" title="Settings">⚙</button>
+      </div>
+    </div>
+
+    <div id="settings-backdrop" class="hidden" aria-hidden="true"></div>
+
+    <div id="settings-menu" class="menu-panel hidden" aria-hidden="true">
+      <button id="menu-resume" type="button">Resume Game</button>
+      <button id="menu-save" type="button">Save</button>
+      <button id="menu-load" type="button">Load</button>
+      <button id="menu-logout" type="button">Log Out</button>
     </div>
 
     <!-- Game canvas -->
@@ -46,7 +58,7 @@
     <script src="js/renderer.js?v=7"></script>
     <script src="js/input.js?v=7"></script>
     <script src="js/ui.js?v=7"></script>
-    <script src="js/net.js?v=8"></script>
-    <script src="js/boot.js?v=7"></script>
+    <script src="js/net.js?v=18"></script>
+    <script src="js/boot.js?v=12"></script>
   </body>
 </html>
