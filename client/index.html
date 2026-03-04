@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tiny Empire</title>
+    <link rel="stylesheet" href="assets/styles.css?v=7" />
+  </head>
+  <body>
+    <!-- Auth overlay -->
+    <div id="auth-overlay">
+      <div class="auth-box">
+        <h1>Tiny Empire</h1>
+        <p class="auth-subtitle">Ant Colony Survival</p>
+        <div id="auth-form">
+          <input id="auth-login" type="text" placeholder="Login name" autocomplete="username" />
+          <input id="auth-visible" type="text" placeholder="Display name (register only)" />
+          <input id="auth-pass" type="password" placeholder="Password" autocomplete="current-password" />
+          <div class="auth-buttons">
+            <button id="btn-login" type="button">Login</button>
+            <button id="btn-register" type="button">Register</button>
+          </div>
+          <p id="auth-error" class="error"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" style="display:none">
+      <div id="hud-stats">
+        <span id="hud-food">Food: 0</span>
+        <span id="hud-pop">Ants: 0</span>
+        <span id="hud-tick">Tick: 0</span>
+      </div>
+      <div id="hud-save-status">--</div>
+      <div id="hud-connection" class="status-offline">offline</div>
+    </div>
+
+    <!-- Game canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Modules loaded as classic scripts (no build step) -->
+    <script src="js/rng.js?v=7"></script>
+    <script src="js/state.js?v=7"></script>
+    <script src="js/game.js?v=8"></script>
+    <script src="js/renderer.js?v=7"></script>
+    <script src="js/input.js?v=7"></script>
+    <script src="js/ui.js?v=7"></script>
+    <script src="js/net.js?v=8"></script>
+    <script src="js/boot.js?v=7"></script>
+  </body>
+</html>

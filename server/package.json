@@ -1,0 +1,16 @@
+{
+  "name": "tiny-empire-server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/server.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Tiny Empire — ant-colony resource-management game server",
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}

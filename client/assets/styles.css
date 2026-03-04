@@ -1,0 +1,95 @@
+/* tiny-empire/client/assets/styles.css  v1 */
+:root {
+  --bg:       #1a1a2e;
+  --panel:    #16213e;
+  --accent:   #e94560;
+  --text:     #eaeaea;
+  --text-dim: #8a8a9a;
+  --success:  #4ade80;
+  --warn:     #facc15;
+  --error:    #ef4444;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+/* ── Auth overlay ──────────────────────────────────────── */
+#auth-overlay {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  z-index: 1000;
+}
+#auth-overlay.hidden { display: none; }
+
+.auth-box {
+  background: var(--panel);
+  padding: 2rem 2.5rem;
+  border-radius: 12px;
+  min-width: 300px;
+  text-align: center;
+}
+.auth-box h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+.auth-subtitle { color: var(--text-dim); margin-bottom: 1.2rem; }
+
+#auth-form input {
+  display: block;
+  width: 100%;
+  padding: .5rem .75rem;
+  margin-bottom: .6rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #0f0f1a;
+  color: var(--text);
+  font-size: .9rem;
+}
+.auth-buttons { display: flex; gap: .5rem; margin-top: .4rem; }
+.auth-buttons button {
+  flex: 1;
+  padding: .5rem;
+  border: none; border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: .9rem;
+}
+#btn-login    { background: var(--accent); color: #fff; }
+#btn-register { background: #333; color: var(--text); }
+
+.error { color: var(--error); font-size: .8rem; margin-top: .4rem; min-height: 1.2em; }
+
+/* ── HUD ───────────────────────────────────────────────── */
+#hud {
+  position: fixed; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .4rem .8rem;
+  background: rgba(22, 33, 62, .85);
+  z-index: 100;
+  font-size: .85rem;
+}
+#hud-stats { display: flex; gap: 1rem; }
+#hud-save-status { color: var(--text-dim); }
+#hud-connection {
+  padding: .15rem .5rem;
+  border-radius: 4px;
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-online  { background: var(--success); color: #000; }
+.status-offline { background: var(--error);   color: #fff; }
+.status-saving  { background: var(--warn);    color: #000; }
+
+/* ── Canvas ────────────────────────────────────────────── */
+#game-canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}

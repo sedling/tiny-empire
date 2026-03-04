@@ -1,0 +1,3 @@
+# Player save data — never commit
+server/data/**
+!server/data/.gitkeep
