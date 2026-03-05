@@ -169,6 +169,18 @@
     hideSettings();
   }
 
+  function onResetHeatmap() {
+    if (TE.resetRoadHeatmap) TE.resetRoadHeatmap();
+    TE.ui.setSaveStatus('saved', 'heatmap reset');
+    hideSettings();
+  }
+
+  function onReturnAllAntsToNest() {
+    if (TE.returnAllAntsToNest) TE.returnAllAntsToNest();
+    TE.ui.setSaveStatus('saved', 'all ants returning');
+    hideSettings();
+  }
+
   /* ── simulation loop (fixed timestep) ──────────────────── */
 
   let simRunning = false;
@@ -239,6 +251,8 @@
     document.getElementById('menu-resume').addEventListener('click', hideSettings);
     document.getElementById('menu-save').addEventListener('click', onManualSave);
     document.getElementById('menu-load').addEventListener('click', onManualLoad);
+    document.getElementById('menu-return-ants').addEventListener('click', onReturnAllAntsToNest);
+    document.getElementById('menu-reset-heatmap').addEventListener('click', onResetHeatmap);
     document.getElementById('menu-logout').addEventListener('click', onLogout);
     if (settingsBackdropEl) {
       settingsBackdropEl.addEventListener('click', hideSettings);

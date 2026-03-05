@@ -43,6 +43,11 @@
     ctx.fill();
   }
 
+  function cargoColor(type) {
+    if (type === 'food') return '#facc15';
+    return '#facc15';
+  }
+
   /* ── main draw ─────────────────────────────────────────── */
 
   function draw() {
@@ -54,6 +59,27 @@
     // Ground
     ctx.fillStyle = '#2d5a27';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (TE.roadConfig && TE.roadConfig.visualEnabled) {
+      const roads = s.roadTraffic;
+      if (roads && roads.activeCells && roads.activeCells.length > 0) {
+        const cellSize = roads.cellSize || 24;
+        const drawSize = cellSize * camera.zoom;
+        ctx.fillStyle = '#b89557';
+        for (let i = 0; i < roads.activeCells.length; i++) {
+          const cell = roads.activeCells[i];
+          const alpha = cell.heat * 0.28;
+          if (alpha <= 0.01) continue;
+          const topLeft = worldToScreen(cell.cx * cellSize, cell.cy * cellSize);
+          if (topLeft.x + drawSize < 0 || topLeft.y + drawSize < 0 || topLeft.x > canvas.width || topLeft.y > canvas.height) {
+            continue;
+          }
+          ctx.globalAlpha = alpha > 0.35 ? 0.35 : alpha;
+          ctx.fillRect(topLeft.x, topLeft.y, drawSize, drawSize);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
 
     // World boundary circle (subtle)
     const center = worldToScreen(0, 0);
@@ -73,10 +99,14 @@
     drawCircle(s.nest.x, s.nest.y, 18, '#8B4513');
     drawCircle(s.nest.x, s.nest.y, 14, '#654321');
 
-    // Ants (small red dots; carrying = brighter)
+    // Ants + carried cargo blob
     for (const a of s.ants) {
+      if (a.inNest) continue;
       const col = a.carrying > 0 ? '#ff6b6b' : '#e94560';
       drawCircle(a.x, a.y, 3, col);
+      if (a.carrying > 0) {
+        drawCircle(a.x + 3, a.y - 3, 1.5, cargoColor(a.carryType));
+      }
     }
   }
 

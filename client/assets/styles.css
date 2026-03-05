@@ -21,6 +21,22 @@ html, body {
   font-size: 14px;
 }
 
+button {
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
+  }
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
 /* ── Auth overlay ──────────────────────────────────────── */
 #auth-overlay {
   position: fixed; inset: 0;
