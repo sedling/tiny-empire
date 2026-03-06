@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Tiny Empire</title>
-    <link rel="stylesheet" href="assets/styles.css?v=29" />
+    <link rel="stylesheet" href="assets/styles.css?v=40" />
   </head>
   <body>
     <!-- Auth overlay -->
@@ -42,25 +42,26 @@
     <div id="settings-backdrop" class="hidden" aria-hidden="true"></div>
 
     <div id="settings-menu" class="menu-panel hidden" aria-hidden="true">
-      <button id="menu-resume" type="button">Resume Game</button>
-      <button id="menu-save" type="button">Save</button>
-      <button id="menu-load" type="button">Load</button>
-      <button id="menu-return-ants" type="button" title="Orders every ant to head back to nest immediately">Return All Ants To Nest</button>
-      <button id="menu-reset-heatmap" type="button" title="Clears all road/traffic marks from the map">Reset Heatmap</button>
-      <button id="menu-logout" type="button">Log Out</button>
+      <button id="menu-resume" type="button" title="Close settings and resume the game">Resume Game</button>
+      <button id="menu-save" type="button" title="Save your current game progress to the server">Save</button>
+      <button id="menu-load" type="button" title="Load the most recent save from the server">Load</button>
+      <button id="menu-return-ants" type="button" title="Command all ants to return to the nest immediately">Return All Ants To Nest</button>
+      <button id="menu-reset-heatmap" type="button" title="Clear all road traffic heatmap marks from the map">Reset Heatmap</button>
+      <button id="menu-delete-resources" type="button" title="Despawn all resources on the map and clear the gathering zone">Delete All Resources</button>
+      <button id="menu-logout" type="button" title="Log out and return to the login screen">Log Out</button>
     </div>
 
     <!-- Game canvas -->
     <canvas id="game-canvas"></canvas>
 
     <!-- Modules loaded as classic scripts (no build step) -->
-    <script src="js/rng.js?v=29"></script>
-    <script src="js/state.js?v=32"></script>
-    <script src="js/game.js?v=33"></script>
-    <script src="js/renderer.js?v=30"></script>
-    <script src="js/input.js?v=29"></script>
-    <script src="js/ui.js?v=29"></script>
-    <script src="js/net.js?v=29"></script>
-    <script src="js/boot.js?v=30"></script>
+    <script src="js/rng.js?v=40"></script>
+    <script src="js/state.js?v=34"></script>
+    <script src="js/game.js?v=48"></script>
+    <script src="js/renderer.js?v=40"></script>
+    <script src="js/input.js?v=40"></script>
+    <script src="js/ui.js?v=41"></script>
+    <script src="js/net.js?v=40"></script>
+    <script src="js/boot.js?v=40"></script>
   </body>
 </html>

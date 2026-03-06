@@ -181,6 +181,12 @@
     hideSettings();
   }
 
+  function onDeleteAllResources() {
+    if (TE.deleteAllResources) TE.deleteAllResources();
+    TE.ui.setSaveStatus('saved', 'all resources deleted');
+    hideSettings();
+  }
+
   /* ── simulation loop (fixed timestep) ──────────────────── */
 
   let simRunning = false;
@@ -253,6 +259,7 @@
     document.getElementById('menu-load').addEventListener('click', onManualLoad);
     document.getElementById('menu-return-ants').addEventListener('click', onReturnAllAntsToNest);
     document.getElementById('menu-reset-heatmap').addEventListener('click', onResetHeatmap);
+    document.getElementById('menu-delete-resources').addEventListener('click', onDeleteAllResources);
     document.getElementById('menu-logout').addEventListener('click', onLogout);
     if (settingsBackdropEl) {
       settingsBackdropEl.addEventListener('click', hideSettings);

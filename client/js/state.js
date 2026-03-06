@@ -58,10 +58,10 @@
   function normalizeAntState(rawState) {
     if (rawState === 'forage') return 'toResource';
     if (rawState === 'return') return 'toNest';
-    if (rawState === 'idle' || rawState === 'toResource' || rawState === 'harvest' || rawState === 'toNest' || rawState === 'deposit') {
+    if (rawState === 'idle' || rawState === 'nestIdle' || rawState === 'toResource' || rawState === 'harvest' || rawState === 'toNest' || rawState === 'deposit') {
       return rawState;
     }
-    return 'idle';
+    return 'nestIdle';
   }
 
   /** Build a serialisable save payload (no functions, no RNG object). */
@@ -85,7 +85,7 @@
         inNest: !!a.inNest,
         needsReplan: !!a.needsReplan,
       })),
-      resources:  state.resources.map(r => ({ id: r.id, x: r.x, y: r.y, amount: r.amount, type: r.type, claimCount: r.claimCount || 0, claimCap: r.claimCap || 0 })),
+      resources:  state.resources.map(r => ({ id: r.id, x: r.x, y: r.y, amount: r.amount, type: r.type, claimCount: r.claimCount || 0, claimCap: r.claimCap || 0, minAmount: r.minAmount || 0 })),
       nextAntId:  state.nextAntId,
       nextResId:  state.nextResId,
       debug: {
@@ -141,7 +141,7 @@
       if (!r) continue;
       const amount = Number(r.amount) || 0;
       if (amount <= 0) continue;
-      resources.push({ id: r.id, x: r.x, y: r.y, amount, type: r.type, claimCount: Number(r.claimCount) || 0, claimCap: Number(r.claimCap) || 0 });
+      resources.push({ id: r.id, x: r.x, y: r.y, amount, type: r.type, claimCount: Number(r.claimCount) || 0, claimCap: Number(r.claimCap) || 0, minAmount: Number(r.minAmount) || 0 });
     }
     state.resources = resources;
     state.resourceById.clear();
@@ -164,7 +164,7 @@
       const ant = ants[i];
       if (ant.targetResourceId > 0 && !state.resourceById.has(ant.targetResourceId)) {
         ant.targetResourceId = 0;
-        ant.state = 'idle';
+        ant.state = 'nestIdle';
         ant.needsReplan = true;
       }
     }

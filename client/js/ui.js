@@ -20,7 +20,11 @@
   function update() {
     const s = TE.state;
     if (elFood) elFood.textContent = `Food: ${Math.floor(s.nest.food)}`;
-    if (elPop)  elPop.textContent  = `Ants: ${s.ants.length}`;
+    if (elPop)  {
+      const inside = s.ants.reduce((n,a)=>n + (a.inNest ? 1 : 0), 0);
+      const outside = Math.max(0, s.ants.length - inside);
+      elPop.textContent  = `Ants: ${s.ants.length} (${inside}/${outside})`;
+    }
     if (elTick) elTick.textContent = `Tick: ${s.gameTick}`;
   }
 

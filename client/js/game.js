@@ -13,8 +13,9 @@
 
   /* ── tuning constants ──────────────────────────────────── */
   const WORLD_RADIUS       = 2000;   // Half-size of world bounds in world units.
+  const NEST_GATHERING_RADIUS = 800; // Radius around nest where ants can harvest resources; upgradeable later.
   const MAX_RESOURCES      = 200;    // Legacy upper bound for resource tuning calculations.
-  const RESOURCE_SPAWN_CHANCE = 0.02;  // Chance each tick to spawn a new resource node.
+  const RESOURCE_SPAWN_CHANCE = 0.002;  // Chance each tick to spawn a new resource node.
   const RESOURCE_NODE_BIAS = 0.7; // 0.0 -> many small nodes, 1.0 -> fewer larger nodes.
   const RESOURCE_NODE_CAP = Math.max(10, Math.floor(MAX_RESOURCES * (1 - (0.55 * RESOURCE_NODE_BIAS)))); // Active node cap after applying bias.
   const RESOURCE_SIZE_SCALE = 1 + (5 * RESOURCE_NODE_BIAS); // Multiplier for per-node resource amounts.
@@ -24,6 +25,7 @@
   const ANT_CARRY_AMOUNT   = 1;      // Amount of resource an ant takes per harvest action.
   const ANT_SPEED_VARIANCE = 0.05;   // Per-ant speed multiplier variation (+/- 5%).
   const ANT_IDLE_RETURN_TICKS = 2 * 20; // Idle ants outside nest return home after 2 seconds.
+  const RESOURCE_MIN_RETENTION_PCT = 0.075; // Resources inside gathering radius stay at 7.5% (5-10% range midpoint) of spawned amount.
   const ANT_NEST_WAIT_MIN_TICKS = 5 * 20; // Min cooldown (5s at 20 ticks/s) after deposit.
   const ANT_NEST_WAIT_MAX_TICKS = 8 * 20; // Max cooldown (8s at 20 ticks/s) after deposit.
   const FOOD_PER_ANT_SPAWN = 10;     // Nest food cost to spawn one ant.
@@ -32,7 +34,7 @@
   const REPLAN_BUDGET_PER_TICK = 50; // Max ants processed by replan queue each tick.
   const CLAIM_PENALTY = 120;         // Score penalty per existing claim when picking resources.
   const NEST_DISTANCE_WEIGHT = 0.6;  // Weight for nest proximity in resource scoring.
-  const RESOURCE_CLAIM_OVERASSIGN = 1.2; // Allow 120% of required gatherers assigned to a node.
+  const RESOURCE_CLAIM_OVERASSIGN = 1.1; // Allow 110% of required gatherers assigned to a node.
   const RESOURCE_GRID_CELL_SIZE = 64; // Cell size for resource spatial index (step 4).
   const RESOURCE_GRID_MAX_RING = 4;   // Max search rings around ant cell during indexed lookup.
   const RESOURCE_GRID_KEY_OFFSET = 32768; // Offset to pack signed cell coords into integer keys.
@@ -42,6 +44,9 @@
   const CLEAR_CLOSER_MARGIN = 30; // New node must be this much clearly closer to reroute.
   const CLEAR_CLOSER_MARGIN_SQ = CLEAR_CLOSER_MARGIN * CLEAR_CLOSER_MARGIN; // Squared closeness margin.
   const NEST_CACHE_RADIUS_SQ = 4; // Radius threshold (2 units) treated as already at nest.
+  const NEST_GATHERING_RADIUS_SQ = NEST_GATHERING_RADIUS * NEST_GATHERING_RADIUS;
+  const RESERVED_NODES_PCT = 0.015; // Fraction of MAX_RESOURCES reserved to spawn only inside gathering radius (1.5%)
+  const NEST_MAX_EXITS_PER_TICK = 2; // Max ants allowed to leave the nest per tick
 
   /* ── emergent roads (step: traffic trails) ───────────── */
   const ROAD_CELL_SIZE = 10; // Cell size used by road heatmap grid.
@@ -78,7 +83,8 @@
   };
 
   /* ── ant FSM states ────────────────────────────────────── */
-  const ANT_IDLE        = 'idle';       // Waiting for or requesting a target resource.
+  const ANT_IDLE        = 'idle';       // Waiting for or requesting a target resource outside nest.
+  const ANT_NEST_IDLE   = 'nestIdle';   // Waiting for assignment while cached inside nest (invisible).
   const ANT_TO_RESOURCE = 'toResource'; // Traveling toward selected resource.
   const ANT_HARVEST     = 'harvest';    // Collecting resource at destination cell.
   const ANT_TO_NEST     = 'toNest';     // Returning to nest with carried resource.
@@ -87,6 +93,7 @@
   /* ── replan queue (step 2) ───────────────────────────── */
   const replanQueue = []; // FIFO queue of ants needing target replanning.
   let replanHead = 0;
+  let nestExitsThisTick = 0;
 
   /* ── resource grid (step 4) ──────────────────────────── */
   const resourceGrid = new Map(); // Sparse spatial index for resources keyed by grid cell.
@@ -329,6 +336,42 @@
     return true;
   }
 
+  function countResourcesInNestZone(state) {
+    let n = 0;
+    for (let i = 0; i < state.resources.length; i++) {
+      const r = state.resources[i];
+      if (r && resourceInNestGatheringZone(state, r)) n++;
+    }
+    return n;
+  }
+
+  function spawnResourceNearNest(state, rng) {
+    if (!state || !rng) return null;
+    if (state.resources.length >= RESOURCE_NODE_CAP) return null;
+    const angle = rng.range(0, Math.PI * 2);
+    const radius = rng.range(0, NEST_GATHERING_RADIUS);
+    const x = state.nest.x + Math.cos(angle) * radius;
+    const y = state.nest.y + Math.sin(angle) * radius;
+    const resource = {
+      id:     state.nextResId++,
+      x:      x,
+      y:      y,
+      amount: rng.int(RESOURCE_AMOUNT_MIN, RESOURCE_AMOUNT_MAX_EXCLUSIVE),
+      type:   'food',
+      claimCount: 0,
+      claimCap: 0,
+    };
+    resource.minAmount = Math.ceil(resource.amount * RESOURCE_MIN_RETENTION_PCT);
+    claimCapForResource(resource);
+    state.resources.push(resource);
+    state.resourceById.set(resource.id, resource);
+    gridAddResource(resource);
+    resourceGridSyncedLength = state.resources.length;
+    retargetNearbyAntsOnSpawn(state, resource, rng);
+    TE.markDirty();
+    return resource;
+  }
+
   function clearTargetClaim(state, ant) {
     if (!ant || ant.targetResourceId <= 0) return;
     const oldTarget = state.resourceById.get(ant.targetResourceId);
@@ -336,12 +379,18 @@
     ant.targetResourceId = 0;
   }
 
+  function resourceInNestGatheringZone(state, resource) {
+    const nestDistSq = distSq(state.nest.x, state.nest.y, resource.x, resource.y);
+    return nestDistSq <= NEST_GATHERING_RADIUS_SQ;
+  }
+
   function claimCapForResource(resource) {
     if (!resource || resource.amount <= 0) return 0;
-    if (resource.claimCap > 0) return resource.claimCap;
+    // Recompute cap each time from current amount to avoid stale cached caps
     const neededGatherers = Math.max(1, Math.ceil(resource.amount / ANT_CARRY_AMOUNT));
-    resource.claimCap = Math.max(1, Math.ceil(neededGatherers * RESOURCE_CLAIM_OVERASSIGN));
-    return resource.claimCap;
+    const cap = Math.max(1, Math.ceil(neededGatherers * RESOURCE_CLAIM_OVERASSIGN));
+    resource.claimCap = cap;
+    return cap;
   }
 
   function resourceHasCapacity(resource) {
@@ -350,9 +399,23 @@
     return (resource.claimCount || 0) < cap;
   }
 
+  function resourceHasHarvestableAmount(state, resource) {
+    if (!resource || resource.amount <= 0) return false;
+    const isInZone = resourceInNestGatheringZone(state, resource);
+    const minAmount = isInZone ? (resource.minAmount || 0) : 0;
+    return resource.amount > minAmount;  // Must have harvestable amount above minimum
+  }
+
   function setTargetResource(state, ant, target) {
-    if (!ant || !target || target.amount <= 0) return false;
-    if (ant.inNest) return false;
+    const dbg = state && state.debug;
+    if (!ant || !target) {
+      if (dbg) dbg.assignFailuresAmountZero = (dbg.assignFailuresAmountZero || 0) + 1;
+      return false;
+    }
+    if (target.amount <= 0) {
+      if (dbg) dbg.assignFailuresAmountZero = (dbg.assignFailuresAmountZero || 0) + 1;
+      return false;
+    }
     if (ant.targetResourceId === target.id) {
       ant.state = ANT_TO_RESOURCE;
       ant.idleSinceTick = 0;
@@ -360,14 +423,35 @@
       ant.inReplanQueue = false;
       return true;
     }
-    if (!resourceHasCapacity(target)) return false;
+    if (!resourceHasCapacity(target)) {
+      if (dbg) dbg.assignFailuresCapacity = (dbg.assignFailuresCapacity || 0) + 1;
+      return false;
+    }
+    if (!resourceHasHarvestableAmount(state, target)) {
+      if (dbg) dbg.assignFailuresNoHarvest = (dbg.assignFailuresNoHarvest || 0) + 1;
+      return false;
+    }
     clearTargetClaim(state, ant);
     ant.targetResourceId = target.id;
     target.claimCount = (target.claimCount || 0) + 1;
-    ant.state = ANT_TO_RESOURCE;
     ant.idleSinceTick = 0;
     ant.needsReplan = false;
     ant.inReplanQueue = false;
+    // If ant is currently cached in the nest, only allow a limited number to exit per tick.
+    if (ant.inNest) {
+      if (nestExitsThisTick < NEST_MAX_EXITS_PER_TICK) {
+        ant.inNest = false;
+        ant.state = ANT_TO_RESOURCE;
+        nestExitsThisTick++;
+      } else {
+        // Mark pending exit; stay in nest until allowed to leave in ANT_NEST_IDLE handling
+        ant.pendingExit = true;
+        // Keep state as ANT_NEST_IDLE so the ant remains invisible/cached
+        ant.state = ANT_NEST_IDLE;
+      }
+    } else {
+      ant.state = ANT_TO_RESOURCE;
+    }
     return true;
   }
 
@@ -409,10 +493,21 @@
     TE.markDirty();
   }
 
+  function deleteAllResources() {
+    const s = TE.state;
+    if (!s || !Array.isArray(s.resources)) return;
+    s.resources.length = 0;
+    s.resourceById.clear();
+    resourceGridSyncedLength = -1;
+    rebuildResourceGrid(s.resources);
+    TE.markDirty();
+  }
+
   function chooseBestResourceForAnt(state, ant) {
     ensureResourceGridSynced(state);
 
     function scoreResource(r) {
+      if (!resourceInNestGatheringZone(state, r)) return Number.POSITIVE_INFINITY;
       const antDistance = dist(ant.x, ant.y, r.x, r.y);
       const nestDistance = dist(state.nest.x, state.nest.y, r.x, r.y);
       const claims = r.claimCount || 0;
@@ -423,7 +518,9 @@
       if (!bucket) return best;
       for (let i = 0; i < bucket.length; i++) {
         const r = bucket[i];
+        if (!resourceInNestGatheringZone(state, r)) continue;
         if (!resourceHasCapacity(r)) continue;
+        if (!resourceHasHarvestableAmount(state, r)) continue;
         const score = scoreResource(r);
         if (score < best.score) {
           best.score = score;
@@ -463,7 +560,9 @@
     const resources = state.resources;
     for (let i = 0; i < resources.length; i++) {
       const r = resources[i];
+      if (!resourceInNestGatheringZone(state, r)) continue;
       if (!resourceHasCapacity(r)) continue;
+      if (!resourceHasHarvestableAmount(state, r)) continue;
       const score = scoreResource(r);
       if (score < best.score) {
         best.score = score;
@@ -485,10 +584,58 @@
     const initialTail = replanQueue.length;
     let processed = 0;
 
+    // Priority pass: process a small batch of nested ants that are ready to depart
+    if (replanHead < initialTail) {
+      const priorityLimit = Math.min(REPLAN_BUDGET_PER_TICK, 200);
+      let priorityCount = 0;
+      for (let i = replanHead; i < initialTail && priorityCount < priorityLimit; i++) {
+        const ant = replanQueue[i];
+        if (!ant) continue;
+        // eligible if in nest and depart cooldown expired (or no cooldown)
+        if (ant.inNest && (!ant.departAtTick || state.gameTick >= ant.departAtTick) && ant.needsReplan && ant.carrying === 0) {
+          // remove from queue slot to avoid double-processing; mark as not queued
+          replanQueue[i] = null;
+          ant.inReplanQueue = false;
+          priorityCount++;
+          // process this ant immediately
+          if (resources.length > 0) {
+            const target = chooseBestResourceForAnt(state, ant);
+            if (target) {
+              if (debug) debug.assignAttempts = (debug.assignAttempts || 0) + 1;
+              const ok = setTargetResource(state, ant, target);
+              if (ok) {
+                if (debug) debug.assignSuccesses = (debug.assignSuccesses || 0) + 1;
+              } else {
+                if (debug) {
+                  if (!resourceHasCapacity(target)) debug.assignFailuresCapacity = (debug.assignFailuresCapacity || 0) + 1;
+                  else if (!resourceHasHarvestableAmount(state, target)) debug.assignFailuresNoHarvest = (debug.assignFailuresNoHarvest || 0) + 1;
+                  else debug.assignFailuresAmountZero = (debug.assignFailuresAmountZero || 0) + 1;
+                }
+                enqueueForReplan(ant);
+              }
+            } else {
+              enqueueForReplan(ant);
+            }
+          } else {
+            enqueueForReplan(ant);
+          }
+          processed++;
+        }
+      }
+      // compact nulls from the queue if we cleared many entries
+      if (priorityCount > 0 && replanHead === 0) {
+        // remove leading nulls
+        while (replanQueue.length > 0 && replanQueue[0] === null) replanQueue.shift();
+        // adjust initialTail accordingly
+      }
+    }
+
     while (processed < REPLAN_BUDGET_PER_TICK && replanHead < initialTail) {
       const ant = replanQueue[replanHead++];
       if (!ant) continue;
       ant.inReplanQueue = false;
+
+      if (debug) debug.replansProcessed = (debug.replansProcessed || 0) + 1;
 
       if (!ant.needsReplan) {
         processed++;
@@ -498,12 +645,9 @@
       if (ant.inNest) {
         if (ant.departAtTick && state.gameTick < ant.departAtTick) {
           processed++;
-          continue;
+          continue;  // Still in cooldown, wait
         }
-        ant.inNest = false;
-        ant.departAtTick = 0;
-        ant.x = state.nest.x;
-        ant.y = state.nest.y;
+        ant.departAtTick = 0;  // Cooldown expired, but stay nested until task is assigned
       }
 
       if (ant.carrying > 0) {
@@ -517,7 +661,18 @@
       if (resources.length > 0) {
         const target = chooseBestResourceForAnt(state, ant);
         if (target) {
-          setTargetResource(state, ant, target);
+          if (debug) debug.assignAttempts = (debug.assignAttempts || 0) + 1;
+          const ok = setTargetResource(state, ant, target);
+          if (ok) {
+            if (debug) debug.assignSuccesses = (debug.assignSuccesses || 0) + 1;
+          } else {
+            if (debug) {
+              if (!resourceHasCapacity(target)) debug.assignFailuresCapacity = (debug.assignFailuresCapacity || 0) + 1;
+              else if (!resourceHasHarvestableAmount(state, target)) debug.assignFailuresNoHarvest = (debug.assignFailuresNoHarvest || 0) + 1;
+              else debug.assignFailuresAmountZero = (debug.assignFailuresAmountZero || 0) + 1;
+            }
+            enqueueForReplan(ant);
+          }
         } else {
           enqueueForReplan(ant);
         }
@@ -543,13 +698,17 @@
     const ants = state.ants;
     for (let i = 0; i < ants.length; i++) {
       const ant = ants[i];
-      if (ant.inNest) continue;
+      if (ant.inNest) {
+        const readyToDepart = (!ant.departAtTick || state.gameTick >= ant.departAtTick);
+        if (!readyToDepart) continue; // still cached, not eligible
+      }
       if (ant.carrying > 0) continue;
       if (ant.state === ANT_TO_NEST || ant.state === ANT_DEPOSIT || ant.state === ANT_HARVEST) continue;
 
       const newDistSq = distSq(ant.x, ant.y, resource.x, resource.y);
       if (newDistSq > SPAWN_REDIRECT_RADIUS_SQ) continue;
       if (rng.next() > SPAWN_REDIRECT_ATTENTION_RATE) continue;
+      if (!resourceHasHarvestableAmount(state, resource)) continue;
 
       let oldDistSq = Number.POSITIVE_INFINITY;
       if (ant.targetResourceId > 0) {
@@ -576,11 +735,20 @@
 
     s.gameTick++;
 
+    // reset per-tick nest exit counter
+    nestExitsThisTick = 0;
+
     const debug = s.debug || (s.debug = {
       totalAnts: 0,
       antsNeedingReplan: 0,
       invalidTargetDropsTick: 0,
       invalidTargetDropsTotal: 0,
+      replansProcessed: 0,
+      assignAttempts: 0,
+      assignFailuresCapacity: 0,
+      assignFailuresNoHarvest: 0,
+      assignFailuresAmountZero: 0,
+      assignSuccesses: 0,
     });
     debug.totalAnts = s.ants.length;
     debug.antsNeedingReplan = 0;
@@ -592,22 +760,30 @@
 
     // 1) Possibly spawn a new resource
     if (s.resources.length < RESOURCE_NODE_CAP && rng.next() < RESOURCE_SPAWN_CHANCE) {
-      const resource = {
-        id:     s.nextResId++,
-        x:      rng.range(-WORLD_RADIUS, WORLD_RADIUS),
-        y:      rng.range(-WORLD_RADIUS, WORLD_RADIUS),
-        amount: rng.int(RESOURCE_AMOUNT_MIN, RESOURCE_AMOUNT_MAX_EXCLUSIVE),
-        type:   'food',
-        claimCount: 0,
-        claimCap: 0,
-      };
-      claimCapForResource(resource);
-      s.resources.push(resource);
-      s.resourceById.set(resource.id, resource);
-      gridAddResource(resource);
-      resourceGridSyncedLength = s.resources.length;
-      retargetNearbyAntsOnSpawn(s, resource, rng);
-      TE.markDirty();
+      const insideCount = countResourcesInNestZone(s);
+      const reservedCount = Math.max(1, Math.floor(MAX_RESOURCES * RESERVED_NODES_PCT));
+      // If we haven't filled the reserved quota for nest-zone nodes yet, spawn near nest.
+      if (insideCount < reservedCount) {
+        spawnResourceNearNest(s, rng);
+      } else {
+        const resource = {
+          id:     s.nextResId++,
+          x:      rng.range(-WORLD_RADIUS, WORLD_RADIUS),
+          y:      rng.range(-WORLD_RADIUS, WORLD_RADIUS),
+          amount: rng.int(RESOURCE_AMOUNT_MIN, RESOURCE_AMOUNT_MAX_EXCLUSIVE),
+          type:   'food',
+          claimCount: 0,
+          claimCap: 0,
+        };
+        resource.minAmount = Math.ceil(resource.amount * RESOURCE_MIN_RETENTION_PCT);
+        claimCapForResource(resource);
+        s.resources.push(resource);
+        s.resourceById.set(resource.id, resource);
+        gridAddResource(resource);
+        resourceGridSyncedLength = s.resources.length;
+        retargetNearbyAntsOnSpawn(s, resource, rng);
+        TE.markDirty();
+      }
     }
 
     // 2) Ant spawning (nest auto-spawns workers if affordable)
@@ -618,14 +794,14 @@
         id:      s.nextAntId++,
         x:       s.nest.x,
         y:       s.nest.y,
-        state:   ANT_IDLE,
+        state:   ANT_NEST_IDLE,
         targetResourceId: 0,
         carrying: 0,
         carryType: null,
         speedMul: randomSpeedMultiplier(rng),
         departAtTick: 0,
         idleSinceTick: 0,
-        inNest: false,
+        inNest: true,
         needsReplan: true,
         inReplanQueue: false,
       });
@@ -639,6 +815,14 @@
     for (let i = 0; i < s.ants.length; i++) {
       const ant = s.ants[i];
 
+      // If an ant is outside the nest with no target and not carrying, treat it as idle
+      if (!ant.inNest && ant.carrying === 0 && ant.targetResourceId === 0 && ant.state !== ANT_TO_NEST && ant.state !== ANT_DEPOSIT && ant.state !== ANT_HARVEST && ant.state !== ANT_TO_RESOURCE) {
+        if (ant.state !== ANT_IDLE) {
+          ant.state = ANT_IDLE;
+          ant.idleSinceTick = s.gameTick;
+        }
+      }
+
       if (ant.targetResourceId > 0) {
         const target = s.resourceById.get(ant.targetResourceId);
         if (!target || target.amount <= 0) {
@@ -647,7 +831,7 @@
             ant.state = ANT_TO_NEST;
             ant.needsReplan = false;
           } else {
-            ant.state = ANT_IDLE;
+            ant.state = ANT_NEST_IDLE;
             enqueueForReplan(ant);
             debug.invalidTargetDropsTick++;
             debug.invalidTargetDropsTotal++;
@@ -664,20 +848,6 @@
             ant.inNest = false;
             ant.needsReplan = false;
             break;
-          }
-          if (ant.inNest) {
-            if (ant.departAtTick && s.gameTick < ant.departAtTick) {
-              break;
-            }
-            ant.inNest = false;
-            ant.x = s.nest.x;
-            ant.y = s.nest.y;
-          }
-          if (ant.departAtTick && s.gameTick < ant.departAtTick) {
-            break;
-          }
-          if (ant.departAtTick && s.gameTick >= ant.departAtTick) {
-            ant.departAtTick = 0;
           }
           const idleTicks = s.gameTick - ant.idleSinceTick;
           const nestDistSq = distSq(ant.x, ant.y, s.nest.x, s.nest.y);
@@ -700,7 +870,7 @@
           const target = s.resourceById.get(ant.targetResourceId);
           if (!target || target.amount <= 0) {
             clearTargetClaim(s, ant);
-            ant.state = ANT_IDLE;
+            ant.state = ANT_NEST_IDLE;
             enqueueForReplan(ant);
             break;
           }
@@ -718,14 +888,20 @@
           let changed = false;
           let tookAny = false;
           if (target && target.amount > 0) {
-            const take = target.amount < ANT_CARRY_AMOUNT ? target.amount : ANT_CARRY_AMOUNT;
-            target.amount -= take;
-            ant.carrying += take;
-            ant.carryType = target.type || 'food';
-            tookAny = take > 0;
-            changed = true;
-            clearTargetClaim(s, ant);
-            if (target.amount <= 0) {
+            const isInZone = resourceInNestGatheringZone(s, target);
+            const minAmount = isInZone ? (target.minAmount || 0) : 0;
+            const maxCanTake = Math.max(0, target.amount - minAmount);
+            const actualTaken = Math.min(maxCanTake, ANT_CARRY_AMOUNT);
+            tookAny = (actualTaken > 0);
+            
+            if (tookAny) {
+              target.amount -= actualTaken;
+              ant.carrying += actualTaken;
+              ant.carryType = target.type || 'food';
+              changed = true;
+              clearTargetClaim(s, ant);
+            }
+            if (target.amount <= minAmount) {
               removeResourceById(s, target.id);
             }
           } else {
@@ -736,7 +912,8 @@
             ant.needsReplan = false;
             ant.state = ANT_TO_NEST;
           } else {
-            ant.state = ANT_IDLE;
+            ant.state = ANT_NEST_IDLE;
+            ant.inNest = true;  // No harvest possible; go back to nest idle
             enqueueForReplan(ant);
           }
           if (changed) TE.markDirty();
@@ -766,8 +943,32 @@
           clearTargetClaim(s, ant);
           ant.departAtTick = s.gameTick + randomNestWaitTicks(rng);
           ant.needsReplan = true;
-          ant.state = ANT_IDLE;
+          ant.state = ANT_NEST_IDLE;  // Move to nest-idle, not ANT_IDLE
           break;
+        }
+        case ANT_NEST_IDLE: {
+          // Ants stay here, invisible, until processReplanQueue assigns them a task
+          if (ant.departAtTick && s.gameTick < ant.departAtTick) {
+            break;  // Still in nest cooldown, wait
+          }
+          ant.departAtTick = 0;
+
+          // If this ant was assigned while still in the nest, allow a limited
+          // number to exit each tick. Also allow ants without pendingExit but
+          // with a target to exit when budget allows.
+          const hasAssignedTarget = ant.targetResourceId && ant.targetResourceId > 0 && ant.carrying === 0;
+          if ((ant.pendingExit || hasAssignedTarget) && nestExitsThisTick < NEST_MAX_EXITS_PER_TICK) {
+            ant.pendingExit = false;
+            ant.inNest = false;
+            ant.state = ANT_TO_RESOURCE;
+            nestExitsThisTick++;
+            break;
+          }
+
+          if (ant.needsReplan) {
+            enqueueForReplan(ant);  // Will be processed next tick
+          }
+          break;  // Stay invisible until assigned or allowed to exit
         }
       }
     }
@@ -777,6 +978,8 @@
 
   TE.gameTick = tick;
   TE.WORLD_RADIUS = WORLD_RADIUS;
+  TE.NEST_GATHERING_RADIUS = NEST_GATHERING_RADIUS;
   TE.resetRoadHeatmap = resetRoadHeatmap;
   TE.returnAllAntsToNest = returnAllAntsToNest;
+  TE.deleteAllResources = deleteAllResources;
 })();

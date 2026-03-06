@@ -81,12 +81,19 @@
       }
     }
 
-    // World boundary circle (subtle)
-    const center = worldToScreen(0, 0);
+    // World boundary square (darker, shows spawn region)
+    const worldSize = (TE.WORLD_RADIUS || 2000) * 2 * camera.zoom;
+    const worldTopLeft = worldToScreen(-TE.WORLD_RADIUS, -TE.WORLD_RADIUS);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(worldTopLeft.x, worldTopLeft.y, worldSize, worldSize);
+
+    // Nest gathering zone circle (solid yellow)
+    const nestPos = worldToScreen(s.nest.x, s.nest.y);
     ctx.beginPath();
-    ctx.arc(center.x, center.y, TE.WORLD_RADIUS * camera.zoom, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
+    ctx.arc(nestPos.x, nestPos.y, (TE.NEST_GATHERING_RADIUS || 800) * camera.zoom, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)';
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     // Resources (food = yellow dots)
