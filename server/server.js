@@ -160,9 +160,9 @@ async function handleAPI(req, res) {
       if (!token) return sendJSON(res, 401, { ok: false, reason: 'missing_token' });
       const session = auth.resolveToken(token);
       if (!session.ok) return sendJSON(res, 401, { ok: false, reason: session.reason });
-      const save = saveUtils.loadLatestSave(session.accountId);
-      if (!save) return sendJSON(res, 404, { ok: false, reason: 'no_saves' });
-      return sendJSON(res, 200, { ok: true, save });
+      const latest = saveUtils.loadLatestSave(session.accountId);
+      if (!latest) return sendJSON(res, 404, { ok: false, reason: 'no_saves' });
+      return sendJSON(res, 200, { ok: true, save: latest.save, savedAt: latest.savedAt });
     }
 
     // GET /api/save/:timestamp

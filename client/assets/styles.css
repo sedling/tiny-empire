@@ -120,6 +120,18 @@ button:active:not(:disabled) {
   line-height: 1;
 }
 
+#store-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .hidden { display: none !important; }
 
 #settings-backdrop {
@@ -144,6 +156,33 @@ button:active:not(:disabled) {
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 8px;
 }
+
+/* Slide-out store panel */
+#store-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 340px;
+  z-index: 230;
+  background: rgba(22, 33, 62, 0.99);
+  border-left: 1px solid rgba(255,255,255,0.05);
+  transform: translateX(100%);
+  transition: transform 220ms ease;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+#store-panel.open { transform: translateX(0); }
+
+#store-panel .store-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+#store-panel .store-tabs { display:flex; gap:6px; margin-bottom:10px; }
+#store-panel .store-tab { padding:6px 10px; border-radius:6px; background:#24365f; cursor:pointer; }
+#store-panel .store-tab.active { background: var(--accent); color: #fff; }
+#store-panel .store-content { flex:1; overflow:auto; padding-top:6px; }
+#store-panel .store-item { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.03); }
+#store-panel .store-item button { min-width:64px; }
 
 .menu-panel button {
   width: 100%;

@@ -43,22 +43,43 @@
     return `te_save_local_v${LOCAL_SAVE_VERSION}_${token.slice(0,16)}`;
   }
 
+  function globalBackupKey() {
+    return `te_save_local_v${LOCAL_SAVE_VERSION}_global`;
+  }
+
   function persistLocalBackup() {
     if (!TE.serialise) return;
     try {
       const payload = TE.serialise();
+      // Only persist well-formed serialised payloads to avoid writing
+      // partial or invalid snapshots (which cause blank reloads).
+      if (!payload || typeof payload !== 'object' || !Number.isFinite(payload.saveSchemaVersion)) return;
       const wrapped = { savedAt: Date.now(), payload };
+      // Store both a token-scoped backup and a global fallback so that
+      // temporary token issues (or quick reloads) don't lose the local
+      // snapshot. Global backup is only used as a best-effort fallback.
       localStorage.setItem(localBackupKey(), JSON.stringify(wrapped));
+      try { localStorage.setItem(globalBackupKey(), JSON.stringify(wrapped)); } catch (_) {}
     } catch (_) {}
   }
 
   function loadLocalBackup() {
     try {
-      const raw = localStorage.getItem(localBackupKey());
+      // Prefer token-scoped backup, fall back to global backup if absent.
+      let raw = localStorage.getItem(localBackupKey());
+      if (!raw) raw = localStorage.getItem(globalBackupKey());
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed || !parsed.payload) return null;
-      return parsed.payload;
+      const p = parsed.payload;
+      // Validate minimal shape of the save payload before returning it.
+      if (!p || typeof p !== 'object') return null;
+      if (!Number.isFinite(p.saveSchemaVersion)) return null;
+      if (!p.nest || typeof p.nest !== 'object') return null;
+      if (!Array.isArray(p.ants) || !Array.isArray(p.resources)) return null;
+      // Return the wrapper so callers can inspect `savedAt` along with payload
+      // (useful to decide whether server or local snapshot is fresher).
+      return parsed;
     } catch (_) {
       return null;
     }

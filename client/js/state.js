@@ -31,7 +31,10 @@
     nest: {
       x: 0, y: 0,
       food: 50,
+      sugar: 0,
       population: 5,
+      gatherLevel: 0,
+      gatherRadius: 800,
     },
     ants:      [],  // { id, x, y, state, targetResourceId, carrying, carryType, needsReplan }
     resources: [],  // { id, x, y, amount, type, claimCount }
@@ -70,7 +73,7 @@
       saveSchemaVersion: SAVE_SCHEMA_VERSION,
       gameTick:   state.gameTick,
       rngSeed:    state.rngSeed,
-      nest:       { x: state.nest.x, y: state.nest.y, food: state.nest.food, population: state.nest.population },
+      nest:       { x: state.nest.x, y: state.nest.y, food: state.nest.food, sugar: state.nest.sugar || 0, population: state.nest.population, gatherLevel: state.nest.gatherLevel || 0, gatherRadius: state.nest.gatherRadius || 800 },
       ants:       state.ants.map((a) => ({
         id: a.id,
         x: a.x,
@@ -85,7 +88,10 @@
         inNest: !!a.inNest,
         needsReplan: !!a.needsReplan,
       })),
-      resources:  state.resources.map(r => ({ id: r.id, x: r.x, y: r.y, amount: r.amount, type: r.type, claimCount: r.claimCount || 0, claimCap: r.claimCap || 0, minAmount: r.minAmount || 0 })),
+      resources:  state.resources.map(r => {
+        const carry = (typeof ANT_CARRY_AMOUNT === 'number') ? ANT_CARRY_AMOUNT : 1;
+        return { id: r.id, x: r.x, y: r.y, amount: r.amount, health: r.health || Math.max(1, Math.ceil((r.amount||0)/carry)), type: r.type, claimCount: r.claimCount || 0, claimCap: r.claimCap || 0, minAmount: r.minAmount || 0 };
+      }),
       nextAntId:  state.nextAntId,
       nextResId:  state.nextResId,
       debug: {
@@ -110,7 +116,7 @@
     if (!save) return;
     state.gameTick   = save.gameTick   || 0;
     state.rngSeed    = save.rngSeed    || 0;
-    state.nest       = save.nest       || { x: 0, y: 0, food: 50, population: 5 };
+    state.nest       = save.nest       || { x: 0, y: 0, food: 50, sugar: 0, population: 5, gatherLevel: 0, gatherRadius: 800 };
     const savedAnts = save.ants || [];
     const ants = new Array(savedAnts.length);
     for (let i = 0; i < savedAnts.length; i++) {
@@ -141,7 +147,11 @@
       if (!r) continue;
       const amount = Number(r.amount) || 0;
       if (amount <= 0) continue;
-      resources.push({ id: r.id, x: r.x, y: r.y, amount, type: r.type, claimCount: Number(r.claimCount) || 0, claimCap: Number(r.claimCap) || 0, minAmount: Number(r.minAmount) || 0 });
+      // Read persisted health if present; otherwise derive it from amount.
+      const carry = (typeof ANT_CARRY_AMOUNT === 'number') ? ANT_CARRY_AMOUNT : 1;
+      const health = Number(r.health) || Math.max(1, Math.ceil(amount / carry));
+      const minAmount = Number(r.minAmount) || 0;
+      resources.push({ id: r.id, x: r.x, y: r.y, amount: health * carry, health: health, type: r.type, claimCount: Number(r.claimCount) || 0, claimCap: Number(r.claimCap) || 0, minAmount: minAmount });
     }
     state.resources = resources;
     state.resourceById.clear();
@@ -210,7 +220,7 @@
     state.rngSeed  = (Date.now() ^ 0xDEADBEEF) >>> 0;
     state.gameTick = 0;
     state.rng      = new TE.RNG(state.rngSeed);
-    state.nest     = { x: 0, y: 0, food: 50, population: 5 };
+    state.nest     = { x: 0, y: 0, food: 50, sugar: 0, population: 5, gatherLevel: 0, gatherRadius: 800 };
     state.ants     = [];
     state.resources = [];
     state.resourceById.clear();

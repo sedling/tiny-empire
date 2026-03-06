@@ -7,10 +7,11 @@
   'use strict';
   const TE = window.TinyEmpire = window.TinyEmpire || {};
 
-  let elFood, elPop, elTick, elSave, elConn;
+  let elFood, elSugar, elPop, elTick, elSave, elConn;
 
   function init() {
     elFood = document.getElementById('hud-food');
+    elSugar = document.getElementById('hud-sugar');
     elPop  = document.getElementById('hud-pop');
     elTick = document.getElementById('hud-tick');
     elSave = document.getElementById('hud-save-status');
@@ -20,6 +21,7 @@
   function update() {
     const s = TE.state;
     if (elFood) elFood.textContent = `Food: ${Math.floor(s.nest.food)}`;
+    if (elSugar) elSugar.textContent = `Sugar: ${Math.floor(s.nest.sugar || 0)}`;
     if (elPop)  {
       const inside = s.ants.reduce((n,a)=>n + (a.inNest ? 1 : 0), 0);
       const outside = Math.max(0, s.ants.length - inside);

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Tiny Empire</title>
-    <link rel="stylesheet" href="assets/styles.css?v=40" />
+    <link rel="stylesheet" href="assets/styles.css?v=66" />
   </head>
   <body>
     <!-- Auth overlay -->
@@ -29,12 +29,14 @@
     <div id="hud" style="display:none">
       <div id="hud-stats">
         <span id="hud-food">Food: 0</span>
+        <span id="hud-sugar">Sugar: 0</span>
         <span id="hud-pop">Ants: 0</span>
         <span id="hud-tick">Tick: 0</span>
       </div>
       <div id="hud-save-status">--</div>
       <div id="hud-controls">
         <div id="hud-connection" class="status-offline">offline</div>
+        <button id="store-btn" type="button" aria-label="Open store" title="Store">🛒</button>
         <button id="settings-btn" type="button" aria-label="Open settings" title="Settings">⚙</button>
       </div>
     </div>
@@ -48,6 +50,7 @@
       <button id="menu-return-ants" type="button" title="Command all ants to return to the nest immediately">Return All Ants To Nest</button>
       <button id="menu-reset-heatmap" type="button" title="Clear all road traffic heatmap marks from the map">Reset Heatmap</button>
       <button id="menu-delete-resources" type="button" title="Despawn all resources on the map and clear the gathering zone">Delete All Resources</button>
+      <button id="menu-open-store" type="button" title="Open the Store to buy upgrades">Store</button>
       <button id="menu-logout" type="button" title="Log out and return to the login screen">Log Out</button>
     </div>
 
@@ -55,13 +58,13 @@
     <canvas id="game-canvas"></canvas>
 
     <!-- Modules loaded as classic scripts (no build step) -->
-    <script src="js/rng.js?v=40"></script>
-    <script src="js/state.js?v=34"></script>
-    <script src="js/game.js?v=48"></script>
-    <script src="js/renderer.js?v=40"></script>
-    <script src="js/input.js?v=40"></script>
-    <script src="js/ui.js?v=41"></script>
-    <script src="js/net.js?v=40"></script>
-    <script src="js/boot.js?v=40"></script>
+    <script src="js/rng.js?v=66"></script>
+    <script src="js/state.js?v=66"></script>
+    <script src="js/game.js?v=66"></script>
+    <script src="js/renderer.js?v=66"></script>
+    <script src="js/input.js?v=66"></script>
+    <script src="js/ui.js?v=66"></script>
+    <script src="js/net.js?v=66"></script>
+    <script src="js/boot.js?v=66"></script>
   </body>
 </html>

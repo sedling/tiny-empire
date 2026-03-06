@@ -15,6 +15,7 @@
 
   let settingsMenuEl = null;
   let settingsBackdropEl = null;
+  let storeMenuEl = null;
 
   function showSettings() {
     if (!settingsMenuEl) return;
@@ -31,6 +32,31 @@
     if (!settingsMenuEl) return;
     settingsMenuEl.classList.add('hidden');
     settingsMenuEl.setAttribute('aria-hidden', 'true');
+    if (settingsBackdropEl) {
+      settingsBackdropEl.classList.add('hidden');
+      settingsBackdropEl.setAttribute('aria-hidden', 'true');
+    }
+    const authOverlayEl = document.getElementById('auth-overlay');
+    if (authOverlayEl && authOverlayEl.classList.contains('hidden')) {
+      startSimulation();
+    }
+  }
+
+  function showStore() {
+    if (!storeMenuEl) return;
+    simRunning = false;
+    if (settingsBackdropEl) {
+      settingsBackdropEl.classList.remove('hidden');
+      settingsBackdropEl.setAttribute('aria-hidden', 'false');
+    }
+    storeMenuEl.classList.add('open');
+    storeMenuEl.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideStore() {
+    if (!storeMenuEl) return;
+    storeMenuEl.classList.remove('open');
+    storeMenuEl.setAttribute('aria-hidden', 'true');
     if (settingsBackdropEl) {
       settingsBackdropEl.classList.add('hidden');
       settingsBackdropEl.setAttribute('aria-hidden', 'true');
@@ -79,32 +105,47 @@
   async function enterGame() {
     hideAuth();
 
-    let serverSave = null;
-    let localSave = null;
+    let serverWrap = null;
 
     try {
       const saved = await TE.net.loadLatest();
-      if (saved && saved.ok && saved.save) serverSave = saved.save;
+      if (saved && saved.ok && saved.save) serverWrap = saved; // keep wrapper (includes savedAt)
     } catch (_err) {
       // server save unavailable (e.g., proxy 502); fallback to local backup below
     }
 
-    localSave = TE.net.loadLocalBackup();
+    const localWrap = TE.net.loadLocalBackup();
+    // localWrap is either null or { savedAt, payload }
+    const localPayload = localWrap ? localWrap.payload : null;
+    const serverPayload = serverWrap ? serverWrap.save : null;
 
-    if (serverSave && localSave) {
-      const serverTick = Number(serverSave.gameTick || 0);
-      const localTick  = Number(localSave.gameTick || 0);
-      if (localTick >= serverTick) {
-        TE.deserialise(localSave);
-        TE.ui.setSaveStatus('saved', 'local backup');
+    if (serverPayload && localPayload) {
+      // Prefer the freshest snapshot. If both sides provide timestamps,
+      // compare them; otherwise fall back to comparing `gameTick`.
+      const serverSavedAt = (serverWrap && typeof serverWrap.savedAt === 'string') ? Date.parse(serverWrap.savedAt) : (typeof serverWrap.savedAt === 'number' ? Number(serverWrap.savedAt) : 0);
+      const localSavedAt = Number(localWrap.savedAt || 0);
+      if (serverSavedAt && localSavedAt) {
+        if (localSavedAt >= serverSavedAt) {
+          TE.deserialise(localPayload);
+          TE.ui.setSaveStatus('saved', 'local backup');
+        } else {
+          TE.deserialise(serverPayload);
+        }
       } else {
-        TE.deserialise(serverSave);
+        const serverTick = Number(serverPayload.gameTick || 0);
+        const localTick  = Number(localPayload.gameTick || 0);
+        if (localTick >= serverTick) {
+          TE.deserialise(localPayload);
+          TE.ui.setSaveStatus('saved', 'local backup');
+        } else {
+          TE.deserialise(serverPayload);
+        }
       }
-    } else if (localSave) {
-      TE.deserialise(localSave);
+    } else if (localPayload) {
+      TE.deserialise(localPayload);
       TE.ui.setSaveStatus('saved', 'local backup');
-    } else if (serverSave) {
-      TE.deserialise(serverSave);
+    } else if (serverPayload) {
+      TE.deserialise(serverPayload);
     } else {
       TE.initNew();
     }
@@ -187,6 +228,68 @@
     hideSettings();
   }
 
+  function onUpgradeGather() {
+    const s = TE.state;
+    if (!s) return;
+    const level = (s.nest.gatherLevel || 0);
+    const base = 5; // base sugar cost
+    const cost = Math.max(1, Math.floor(base * Math.pow(2, level)));
+    if ((s.nest.sugar || 0) < cost) {
+      TE.ui.setSaveStatus('error', `Need ${cost} sugar`);
+      return;
+    }
+    s.nest.sugar -= cost;
+    s.nest.gatherLevel = level + 1;
+    s.nest.gatherRadius = (s.nest.gatherRadius || 800) + 200; // increase radius by 200 each level
+    TE.markDirty();
+    TE.ui.setSaveStatus('saved', `Gather radius upgraded to ${s.nest.gatherRadius}`);
+    hideSettings();
+  }
+
+  function ensureUpgrades(s) {
+    if (!s.nest) s.nest = {};
+    if (!s.nest.upgrades) s.nest.upgrades = {};
+  }
+
+  function onUpgradeNodeSpawn() {
+    const s = TE.state; if (!s) return;
+    ensureUpgrades(s);
+    const level = s.nest.upgrades.nodeSpawnLevel || 0;
+    const cost = Math.max(1, Math.floor(3 * Math.pow(2, level)));
+    if ((s.nest.sugar || 0) < cost) { TE.ui.setSaveStatus('error', `Need ${cost} sugar`); return; }
+    s.nest.sugar -= cost;
+    s.nest.upgrades.nodeSpawnLevel = level + 1;
+    s.nest.upgrades.nodeSpawnMul = (s.nest.upgrades.nodeSpawnMul || 1) * 1.2; // 20% more nodes
+    TE.markDirty(); TE.ui.setSaveStatus('saved', `Node spawn increased`);
+    hideStore();
+  }
+
+  function onUpgradeSugarSpawn() {
+    const s = TE.state; if (!s) return;
+    ensureUpgrades(s);
+    const level = s.nest.upgrades.sugarSpawnLevel || 0;
+    const cost = Math.max(1, Math.floor(2 * Math.pow(2, level)));
+    if ((s.nest.sugar || 0) < cost) { TE.ui.setSaveStatus('error', `Need ${cost} sugar`); return; }
+    s.nest.sugar -= cost;
+    s.nest.upgrades.sugarSpawnLevel = level + 1;
+    s.nest.upgrades.sugarSpawnAdd = (s.nest.upgrades.sugarSpawnAdd || 0) + 0.05; // +5% sugar chance
+    TE.markDirty(); TE.ui.setSaveStatus('saved', `Sugar spawn chance increased`);
+    hideStore();
+  }
+
+  function onUpgradeAntGather() {
+    const s = TE.state; if (!s) return;
+    ensureUpgrades(s);
+    const level = s.nest.upgrades.antGatherLevel || 0;
+    const cost = Math.max(1, Math.floor(4 * Math.pow(2, level)));
+    if ((s.nest.sugar || 0) < cost) { TE.ui.setSaveStatus('error', `Need ${cost} sugar`); return; }
+    s.nest.sugar -= cost;
+    s.nest.upgrades.antGatherLevel = level + 1;
+    s.nest.upgrades.antGatherMul = (s.nest.upgrades.antGatherMul || 0) + 0.5; // +50% carry per level
+    TE.markDirty(); TE.ui.setSaveStatus('saved', `Ant gather increased`);
+    hideStore();
+  }
+
   /* ── simulation loop (fixed timestep) ──────────────────── */
 
   let simRunning = false;
@@ -260,9 +363,68 @@
     document.getElementById('menu-return-ants').addEventListener('click', onReturnAllAntsToNest);
     document.getElementById('menu-reset-heatmap').addEventListener('click', onResetHeatmap);
     document.getElementById('menu-delete-resources').addEventListener('click', onDeleteAllResources);
+    const openStoreBtn = document.getElementById('menu-open-store');
+    if (openStoreBtn) openStoreBtn.addEventListener('click', () => { hideSettings(); showStore(); });
+    storeMenuEl = document.getElementById('store-menu');
+    if (!storeMenuEl) {
+      // create store menu dynamically
+      storeMenuEl = document.createElement('div');
+        storeMenuEl.id = 'store-panel';
+        storeMenuEl.className = '';
+        storeMenuEl.setAttribute('aria-hidden', 'true');
+        storeMenuEl.innerHTML = `
+          <div class="store-header">
+            <h3>Store</h3>
+            <button id="store-close" type="button" title="Close">✕</button>
+          </div>
+          <div class="store-tabs">
+            <div class="store-tab active" data-tab="radius">Radius</div>
+            <div class="store-tab" data-tab="nodes">Nodes</div>
+            <div class="store-tab" data-tab="ants">Ants</div>
+          </div>
+          <div class="store-content">
+            <div class="store-pane" data-pane="radius">
+              <div class="store-item"><div>Upgrade Gathering Radius</div><button id="store-upgrade-gather" type="button">Buy</button></div>
+            </div>
+            <div class="store-pane hidden" data-pane="nodes">
+              <div class="store-item"><div>Increase food node spawn rate</div><button id="store-upgrade-node-spawn" type="button">Buy</button></div>
+              <div class="store-item"><div>Increase sugar spawn rate</div><button id="store-upgrade-sugar-spawn" type="button">Buy</button></div>
+            </div>
+            <div class="store-pane hidden" data-pane="ants">
+              <div class="store-item"><div>Increase ant gather amount</div><button id="store-upgrade-ant-gather" type="button">Buy</button></div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(storeMenuEl);
+        // Wire tab switching
+        storeMenuEl.querySelectorAll('.store-tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            storeMenuEl.querySelectorAll('.store-tab').forEach(t=>t.classList.remove('active'));
+            tab.classList.add('active');
+            const which = tab.dataset.tab;
+            storeMenuEl.querySelectorAll('.store-pane').forEach(p => {
+              if (p.dataset.pane === which) p.classList.remove('hidden'); else p.classList.add('hidden');
+            });
+          });
+        });
+        // Close button (handled by wiring below)
+    }
+    // Wire store UI controls
+    const storeClose = document.getElementById('store-close');
+    if (storeClose) storeClose.addEventListener('click', () => { hideStore(); });
+    const storeUpgrade = document.getElementById('store-upgrade-gather');
+    if (storeUpgrade) storeUpgrade.addEventListener('click', () => { onUpgradeGather(); });
+    const nodeSpawnBtn = document.getElementById('store-upgrade-node-spawn');
+    if (nodeSpawnBtn) nodeSpawnBtn.addEventListener('click', () => { onUpgradeNodeSpawn(); });
+    const sugarSpawnBtn = document.getElementById('store-upgrade-sugar-spawn');
+    if (sugarSpawnBtn) sugarSpawnBtn.addEventListener('click', () => { onUpgradeSugarSpawn(); });
+    const antGatherBtn = document.getElementById('store-upgrade-ant-gather');
+    if (antGatherBtn) antGatherBtn.addEventListener('click', () => { onUpgradeAntGather(); });
+    const storeHudBtn = document.getElementById('store-btn');
+    if (storeHudBtn) storeHudBtn.addEventListener('click', () => { if (storeMenuEl && storeMenuEl.classList.contains('open')) hideStore(); else showStore(); });
     document.getElementById('menu-logout').addEventListener('click', onLogout);
     if (settingsBackdropEl) {
-      settingsBackdropEl.addEventListener('click', hideSettings);
+      settingsBackdropEl.addEventListener('click', () => { hideSettings(); hideStore(); });
     }
 
     // Auto-resume if token exists

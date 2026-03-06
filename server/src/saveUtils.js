@@ -173,11 +173,14 @@ function loadSave(accountId, timestamp) {
   }
 }
 
-/** Load the latest save for a user. Returns parsed JSON or null. */
+/** Load the latest save for a user. Returns { save, savedAt } or null. */
 function loadLatestSave(accountId) {
   const files = listSaves(accountId);
   if (!files.length) return null;
-  return loadSave(accountId, files[0].replace('.json', ''));
+  const ts = files[0].replace('.json', '');
+  const save = loadSave(accountId, ts);
+  if (!save) return null;
+  return { save, savedAt: ts };
 }
 
 /**

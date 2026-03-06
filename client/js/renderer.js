@@ -43,8 +43,16 @@
     ctx.fill();
   }
 
+  function drawSquare(wx, wy, halfSize, fill) {
+    const p = worldToScreen(wx, wy);
+    const s = halfSize * camera.zoom;
+    ctx.fillStyle = fill;
+    ctx.fillRect(p.x - s, p.y - s, s * 2, s * 2);
+  }
+
   function cargoColor(type) {
     if (type === 'food') return '#facc15';
+    if (type === 'sugar') return '#ffffff';
     return '#facc15';
   }
 
@@ -88,18 +96,24 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(worldTopLeft.x, worldTopLeft.y, worldSize, worldSize);
 
-    // Nest gathering zone circle (solid yellow)
+    // Nest gathering zone circle (solid yellow) - use state-defined radius if present
     const nestPos = worldToScreen(s.nest.x, s.nest.y);
+    const gatherRadius = (s.nest && s.nest.gatherRadius) ? s.nest.gatherRadius : (TE.NEST_GATHERING_RADIUS || 800);
     ctx.beginPath();
-    ctx.arc(nestPos.x, nestPos.y, (TE.NEST_GATHERING_RADIUS || 800) * camera.zoom, 0, Math.PI * 2);
+    ctx.arc(nestPos.x, nestPos.y, gatherRadius * camera.zoom, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Resources (food = yellow dots)
+    // Resources (food = yellow dots, sugar = white small squares)
     for (const r of s.resources) {
-      const size = 3 + r.amount * 0.4;
-      drawCircle(r.x, r.y, size, '#facc15');
+      if (r.type === 'sugar') {
+        const halfSide = 2 + r.amount * 0.2; // half-side in world units
+        drawSquare(r.x, r.y, halfSide, '#ffffff');
+      } else {
+        const size = 3 + r.amount * 0.4;
+        drawCircle(r.x, r.y, size, '#facc15');
+      }
     }
 
     // Nest (brown circle with outline)
@@ -112,7 +126,12 @@
       const col = a.carrying > 0 ? '#ff6b6b' : '#e94560';
       drawCircle(a.x, a.y, 3, col);
       if (a.carrying > 0) {
-        drawCircle(a.x + 3, a.y - 3, 1.5, cargoColor(a.carryType));
+        if (a.carryType === 'sugar') {
+          // Small sugar square carried by the ant
+          drawSquare(a.x + 3, a.y - 3, 1.2, cargoColor('sugar'));
+        } else {
+          drawCircle(a.x + 3, a.y - 3, 1.5, cargoColor(a.carryType));
+        }
       }
     }
   }
